@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agenda</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .menu {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-radius: 5px;
+            padding: 10px;
+        }
+        .menu button {
+            background-color: transparent;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        .menu input[type="file"] {
+            display: none;
+        }
+        .menu .dropdown {
+            display: none;
+            flex-direction: column;
+        }
+        .menu .dropdown.active {
+            display: flex;
+        }
+        .menu button.toggle {
+            font-size: 18px;
+        }
+        h1 {
+            color: #fff;
+            margin-top: 20px;
+            text-shadow: 2px 2px 4px #000;
+        }
+        .draggable {
+            position: absolute;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+        }
+        input, textarea, button {
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .events {
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            overflow-x: auto;
+            resize: both;
+            width: 80%; /* Default width */
+            min-width: 200px; /* Minimum width */
+            min-height: 100px; /* Minimum height */
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 10px;
+            border: 1px solid #ccc;
+            text-align: left;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+        button {
+            margin: 5px;
+            padding: 5px;
+            border: none;
+            background-color: #ff6347;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button.edit {
+            background-color: #4CAF50;
+        }
+        .resizable {
+            resize: both;
+            overflow: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="menu">
+        <button onclick="toggleDropdown()">•••</button>
+        <div class="dropdown">
+            <button class="toggle" onclick="toggleEditMode()">Modificar Interfaz</button>
+            <button class="toggle" onclick="document.getElementById('fileInput').click()">Cambiar Imagen</button>
+            <input type="file" id="fileInput" accept="image/*" onchange="changeBackground(event)">
+        </div>
+    </div>
+    <h1>Mi Agenda</h1>
+    <form id="eventForm" class="draggable resizable" data-id="eventForm">
+        <input type="date" id="eventDate" required>
+        <textarea id="eventDescription" placeholder="Descripción del evento" required></textarea>
+        <button type="submit">Agregar Evento</button>
+    </form>
+    <div class="events draggable resizable" data-id="eventsContainer">
+        <table>
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Descripción</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="eventsList"></tbody>
+        </table>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/emailjs-com@2/dist/email.min.js"></script>
+    <script>
+        (function() {
+            emailjs.init("TU_USER_ID");  // Reemplaza "TU_USER_ID" con tu ID de usuario de EmailJS
+        })();
+
+        let events = JSON.parse(localStorage.getItem('events')) || [];
+
+        document.getElementById('eventForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const eventDate = new Date(document.getElementById('eventDate').value);
+            const eventDescription = document.getElementById('eventDescription').value;
+
+            if (!eventDate || !eventDescription) {
+                alert('Por favor, completa todos los campos.');
+                return;
+            }
+
+            const newEvent = { id: Date.now(), date: eventDate, description: eventDescription };
+            events.push(newEvent);
+            localStorage.setItem('events', JSON.stringify(events));
+            renderEvents();
+
+            document.getElementById('eventDate').value = '';
+            document.getElementById('eventDescription').value = '';
+
+            const now = new Date();
+            const timeUntilEvent = eventDate.getTime() - now.getTime();
+            const timeUntilNotification = timeUntilEvent - (24 * 60 * 60 * 1000); // 24 horas antes
+
+            if (timeUntilNotification > 0) {
+                setTimeout(function() {
+                    sendEmailNotification(eventDescription, eventDate);
+                }, timeUntilNotification);
+            }
+        });
+
+        function renderEvents() {
+            const eventList = document.getElementById('eventsList');
+            eventList.innerHTML = '';
+            events.forEach(event => {
+                const eventRow = document.createElement('tr');
+                eventRow.innerHTML = `
+                    <td>${new Date(event.date).toLocaleDateString()}</td>
+                    <td>${event.description}</td>
+                    <td>
+                        <button class="edit" onclick="editEvent(${event.id})">Editar</button>
+                        <button onclick="deleteEvent(${event.id})">Eliminar</button>
+                    </td>
+                `;
+                eventList.appendChild(eventRow);
+            });
+        }
+
+        function deleteEvent(id) {
+            events = events.filter(event => event.id !== id);
+            localStorage.setItem('events', JSON.stringify(events));
+            renderEvents();
+        }
+
+        function editEvent(id) {
+            const event = events.find(event => event.id === id);
+            if (event) {
+                document.getElementById('eventDate').value = new Date(event.date).toISOString().substr(0, 10);
+                document.getElementById('eventDescription').value = event.description;
+                deleteEvent(id);
+            }
+        }
+
+        function sendEmailNotification(description, date) {
+            emailjs.send('default_service', 'TEMPLATE_ID', {
+                to_email: 'henry0020503@gmail.com',
+                message: `El evento '${description}' será en 24 horas el ${new Date(date).toLocaleDateString()}.`
+            })
+            .then(function(response) {
+                console.log('Correo electrónico enviado con éxito', response.status, response.text);
+            }, function(error) {
+                console.log('Error al enviar el correo electrónico', error);
+            });
+        }
+
+        function changeBackground(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.body.style.backgroundImage = `url(${e.target.result})`;
+                    localStorage.setItem('backgroundImage', e.target.result);
+                }
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function toggleDropdown() {
+            const dropdown = document.querySelector('.dropdown');
+            dropdown.classList.toggle('active');
+        }
+
+        function toggleEditMode() {
+            const editMode = localStorage.getItem('editMode') === 'true';
+            localStorage.setItem('editMode', !editMode);
+            document.querySelectorAll('.draggable').forEach(el => {
+                el.classList.toggle('resizable');
+                if (!editMode) {
+                    el.setAttribute('draggable', true);
+                    el.addEventListener('mousedown', dragMouseDown);
+                } else {
+                    el.removeAttribute('draggable');
+                    el.removeEventListener('mousedown', dragMouseDown);
+                }
+            });
+        }
+
+        function dragMouseDown(e) {
+            e.preventDefault();
+            document.onmousemove = elementDrag;
+            document.onmouseup = closeDragElement;
+
+            let pos3 = e.clientX;
+            let pos4 = e.clientY;
+
+            function elementDrag(e) {
+                e.preventDefault();
+                let pos1 = pos3 - e.clientX;
+                let pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                e.target.style.top = (e.target.offsetTop - pos2) + "px";
+                e.target.style.left = (e.target.offsetLeft - pos1) + "px";
+            }
+
+            function closeDragElement() {
+                document.onmouseup = null;
+                document.onmousemove = null;
+                savePositions();
+            }
+        }
+
+        function savePositions() {
+            const positions = [];
+            document.querySelectorAll('.draggable').forEach(el => {
+                positions.push({
+                    id: el.dataset.id,
+                    left: el.style.left,
+                    top: el.style.top,
+                    width: el.style.width,
+                    height: el.style.height
+                });
+            });
+            localStorage.setItem('positions', JSON.stringify(positions));
+        }
+
+        function loadPositions() {
+            const positions = JSON.parse(localStorage.getItem('positions')) || [];
+            positions.forEach(pos => {
+                const el = document.querySelector(`[data-id="${pos.id}"]`);
+                if (el) {
+                    el.style.left = pos.left;
+                    el.style.top = pos.top;
+                    el.style.width = pos.width;
+                    el.style.height = pos.height;
+                }
+            });
+        }
+
+        window.onload = function() {
+            renderEvents();
+            const backgroundImage = localStorage.getItem('backgroundImage');
+            if (backgroundImage) {
+                document.body.style.backgroundImage = `url(${backgroundImage})`;
+            }
+            loadPositions();
+            toggleEditMode();
+        };
+    </script>
+</body>
+</html>
